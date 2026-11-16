@@ -1,7 +1,7 @@
 extends RefCounted
 class_name GltfSceneLoader
 
-## Loads a glTF 2.0 or GLB file into a Node3D scene.
+## Loads a glTF 2.0 or GLB file into a scene node.
 ## The caller owns the returned node and is responsible for adding it to the scene tree.
 
 func load_scene(path: String) -> Dictionary:
@@ -22,7 +22,7 @@ func load_scene(path: String) -> Dictionary:
 	if parse_error != OK:
 		return {
 			"ok": false,
-			"error": "Could not parse glTF file (error %d)." % parse_error
+			"error": "Could not parse glTF file (error %s)." % error_string(parse_error)
 		}
 
 	var generated_scene := document.generate_scene(state)
@@ -31,6 +31,5 @@ func load_scene(path: String) -> Dictionary:
 
 	return {
 		"ok": true,
-		"scene": generated_scene,
-		"animation_names": state.get_animation_library("")
+		"scene": generated_scene
 	}
