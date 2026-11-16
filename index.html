@@ -50,14 +50,20 @@
 </header>
 <main>
   <div id="viewport">
-    <div id="dropHint"><div><strong>載入 FBX 模型</strong>點選右側「選擇 FBX／貼圖」或將 .fbx 拖放到這裡</div></div>
+    <div id="dropHint"><div><strong>載入角色資源資料夾</strong>選取包含 Head／Body／Accessory 的總資料夾，先掃描檔案，再挑選 FBX 預覽</div></div>
   </div>
   <aside>
     <section>
       <h2>模型載入</h2>
-      <label for="files">選擇 FBX；如有外置貼圖，請同時多選貼圖檔</label>
+      <label for="folder">選擇角色資源總資料夾（包含 Head／Body／Accessory 子資料夾）</label>
+      <input id="folder" type="file" webkitdirectory directory multiple>
+      <p class="muted">瀏覽器會讀取你選取資料夾內的檔案及相對路徑，不會把檔案上傳到 GitHub。也可用下方方式單獨選取一個 FBX。</p>
+      <label for="files">或單獨選取 FBX／貼圖</label>
       <input id="files" type="file" accept=".fbx,.png,.jpg,.jpeg,.tga,.bmp,.webp" multiple>
-      <p class="muted">建議同時選取 FBX 使用的貼圖圖片。此測試版不解析 Unity AssetBundle；請先使用已匯出的 FBX。</p>
+      <label for="fbxChoice">從資料夾找到的 FBX</label>
+      <select id="fbxChoice" disabled><option>尚未掃描資料夾</option></select>
+      <button id="loadChosen" disabled style="margin-top:8px">載入選取的 FBX 預覽</button>
+      <div id="inventory" class="muted" style="margin-top:10px">尚未選擇資源資料夾。</div>
     </section>
     <section>
       <h2>動畫</h2>
@@ -94,6 +100,11 @@ const viewport = document.getElementById("viewport");
 const hint = document.getElementById("dropHint");
 const statusEl = document.getElementById("status");
 const fileInput = document.getElementById("files");
+const folderInput = document.getElementById("folder");
+const fbxChoice = document.getElementById("fbxChoice");
+const loadChosen = document.getElementById("loadChosen");
+const inventoryEl = document.getElementById("inventory");
+let selectedFiles = [];
 const animationSelect = document.getElementById("animations");
 const playButton = document.getElementById("play");
 const stopButton = document.getElementById("stop");
@@ -305,11 +316,45 @@ wireButton.addEventListener("click", () => {
   });
   wireButton.textContent = "線框：" + (wireframe ? "開" : "關");
 });
-fileInput.addEventListener("change", () => {
-  const files = [...fileInput.files];
-  const fbx = files.find(file => file.name.toLowerCase().endsWith(".fbx"));
-  if (!fbx) { setStatus("請選擇一個 .fbx 檔案。"); return; }
-  loadFBX(fbx, files);
+function scanFiles(files) {
+  selectedFiles = [...files];
+  const fbxs = selectedFiles.filter(file => file.name.toLowerCase().endsWith(".fbx"));
+  const textures = selectedFiles.filter(file => /\\.(png|jpe?g|tga|bmp|webp)$/i.test(file.name));
+  const byRole = { Head: [], Body: [], Accessory: [], Other: [] };
+  for (const file of fbxs) {
+    const path = (file.webkitRelativePath || file.name).toLowerCase();
+    if (/(^|\\/)(head|face)(\\/|_|\\.)/.test(path)) byRole.Head.push(file);
+    else if (/(^|\\/)(body|costume)(\\/|_|\\.)/.test(path)) byRole.Body.push(file);
+    else if (/(^|\\/)(accessory|accessories|acc)(\\/|_|\\.)/.test(path)) byRole.Accessory.push(file);
+    else byRole.Other.push(file);
+  }
+  fbxChoice.innerHTML = "";
+  fbxs.forEach((file, i) => {
+    const path = file.webkitRelativePath || file.name;
+    const option = new Option(path, String(i));
+    fbxChoice.add(option);
+  });
+  fbxChoice.disabled = fbxs.length === 0;
+  loadChosen.disabled = fbxs.length === 0;
+  const fmt = (name, arr) => name + " FBX：" + arr.length;
+  inventoryEl.textContent = [
+    "掃描完成：" + selectedFiles.length + " 個檔案",
+    "FBX：" + fbxs.length + "；貼圖圖片：" + textures.length,
+    fmt("Head／Face", byRole.Head),
+    fmt("Body／Costume", byRole.Body),
+    fmt("Accessory", byRole.Accessory),
+    fmt("未分類", byRole.Other),
+    "注意：分類依資料夾／檔名猜測，請以實際資源結構核對。"
+  ].join("\\n");
+  setStatus("已索引資源資料夾。選擇一個 FBX 可先單獨檢查；目前尚未自動合併 Head、Body、Accessory。");
+}
+folderInput.addEventListener("change", () => scanFiles(folderInput.files));
+fileInput.addEventListener("change", () => scanFiles(fileInput.files));
+loadChosen.addEventListener("click", () => {
+  const fbxs = selectedFiles.filter(file => file.name.toLowerCase().endsWith(".fbx"));
+  const fbx = fbxs[Number(fbxChoice.value)];
+  if (!fbx) { setStatus("找不到選取的 FBX。"); return; }
+  loadFBX(fbx, selectedFiles);
 });
 viewport.addEventListener("dragover", e => { e.preventDefault(); });
 viewport.addEventListener("drop", e => {
