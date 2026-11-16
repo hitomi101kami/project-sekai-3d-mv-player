@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <title>Project SEKAI 3D MV Player — FBX Web Preview</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0b1020; color: #e5e7eb; }
+    header { padding: 14px 18px; background: #111827; border-bottom: 1px solid #263244; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    header p { margin: 0; color: #9ca3af; font-size: 12px; }
+    main { display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-height: calc(100dvh - 58px); }
+    #viewport { position: relative; min-height: 520px; overflow: hidden; background: radial-gradient(ellipse at 50% 35%, #26334a, #101827 68%, #090e18); }
+    #viewport canvas { display: block; width: 100%; height: 100%; }
+    #dropHint { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; color: #cbd5e1; text-align: center; padding: 24px; }
+    #dropHint div { border: 1px dashed #64748b; border-radius: 16px; padding: 22px; background: #0b102088; }
+    #dropHint strong { display: block; font-size: 17px; margin-bottom: 8px; }
+    aside { padding: 16px; background: #111827; border-left: 1px solid #263244; }
+    section { margin-bottom: 18px; }
+    h2 { font-size: 13px; color: #93c5fd; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .06em; }
+    button, select, input[type=file] { width: 100%; }
+    button, select { background: #1f2937; color: #f9fafb; border: 1px solid #475569; border-radius: 8px; padding: 10px; }
+    button { cursor: pointer; }
+    button:hover { background: #334155; }
+    button:disabled, select:disabled { opacity: .45; cursor: not-allowed; }
+    input[type=file] { font-size: 12px; color: #cbd5e1; }
+    .row { display: flex; gap: 8px; margin-top: 8px; }
+    .row button { flex: 1; }
+    label { display: block; color: #cbd5e1; font-size: 12px; margin: 9px 0 5px; }
+    input[type=range] { width: 100%; accent-color: #60a5fa; }
+    #status { font-size: 12px; line-height: 1.55; color: #cbd5e1; white-space: pre-wrap; overflow-wrap: anywhere; background: #0b1020; border: 1px solid #263244; border-radius: 8px; padding: 10px; min-height: 62px; }
+    .muted { color: #94a3b8; font-size: 11px; line-height: 1.5; }
+    @media (max-width: 760px) {
+      main { display: flex; flex-direction: column; }
+      #viewport { min-height: 54dvh; }
+      aside { border-left: 0; border-top: 1px solid #263244; }
+    }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+<header>
+  <h1>Project SEKAI 3D MV Player</h1>
+  <p>Browser FBX preview · Three.js · Web / Android browser</p>
+</header>
+<main>
+  <div id="viewport">
+    <div id="dropHint"><div><strong>載入 FBX 模型</strong>點選右側「選擇 FBX／貼圖」或將 .fbx 拖放到這裡</div></div>
+  </div>
+  <aside>
+    <section>
+      <h2>模型載入</h2>
+      <label for="files">選擇 FBX；如有外置貼圖，請同時多選貼圖檔</label>
+      <input id="files" type="file" accept=".fbx,.png,.jpg,.jpeg,.tga,.bmp,.webp" multiple>
+      <p class="muted">建議同時選取 FBX 使用的貼圖圖片。此測試版不解析 Unity AssetBundle；請先使用已匯出的 FBX。</p>
+    </section>
+    <section>
+      <h2>動畫</h2>
+      <select id="animations" disabled><option>尚未載入模型</option></select>
+      <div class="row">
+        <button id="play" disabled>播放</button>
+        <button id="stop" disabled>停止</button>
+      </div>
+      <label for="time">動畫時間 <span id="timeLabel">0.00s</span></label>
+      <input id="time" type="range" min="0" max="1" step="0.01" value="0" disabled>
+    </section>
+    <section>
+      <h2>視角</h2>
+      <label for="scale">模型縮放</label>
+      <input id="scale" type="range" min="0.1" max="3" step="0.05" value="1">
+      <div class="row">
+        <button id="reset">重設視角</button>
+        <button id="wire">線框：關</button>
+      </div>
+    </section>
+    <section>
+      <h2>狀態</h2>
+      <div id="status">等待載入 FBX。支援含骨骼網格及 FBX 動畫的基本預覽。</div>
+    </section>
+    <p class="muted">限制：FBX 貼圖路徑、特殊 Shader、BlendShape 命名及多檔角色重組仍在開發中。網頁版與 Godot Android 版目前是分開的播放器實作。</p>
+  </aside>
+</main>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+
+const viewport = document.getElementById("viewport");
+const hint = document.getElementById("dropHint");
+const statusEl = document.getElementById("status");
+const fileInput = document.getElementById("files");
+const animationSelect = document.getElementById("animations");
+const playButton = document.getElementById("play");
+const stopButton = document.getElementById("stop");
+const timeInput = document.getElementById("time");
+const timeLabel = document.getElementById("timeLabel");
+const scaleInput = document.getElementById("scale");
+const wireButton = document.getElementById("wire");
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x101827);
+const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 2000);
+camera.position.set(0, 1.5, 4.5);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+viewport.prepend(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 1, 0);
+scene.add(new THREE.HemisphereLight(0xdbeafe, 0x263044, 2.0));
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+keyLight.position.set(3, 6, 4);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0x8ab4ff, 0.8);
+fillLight.position.set(-4, 2, -3);
+scene.add(fillLight);
+const grid = new THREE.GridHelper(10, 20, 0x64748b, 0x334155);
+scene.add(grid);
+
+let model = null;
+let mixer = null;
+let activeAction = null;
+let clips = [];
+let clock = new THREE.Clock();
+let isPlaying = false;
+let baseScale = 1;
+let wireframe = false;
+let objectUrls = [];
+
+function setStatus(message) { statusEl.textContent = message; }
+function resize() {
+  const w = viewport.clientWidth;
+  const h = viewport.clientHeight;
+  if (!w || !h) return;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+}
+new ResizeObserver(resize).observe(viewport);
+resize();
+
+function disposeModel() {
+  if (model) {
+    scene.remove(model);
+    model.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of materials) {
+          for (const value of Object.values(mat)) if (value && value.isTexture) value.dispose();
+          mat.dispose();
+        }
+      }
+    });
+  }
+  model = null; mixer = null; activeAction = null; clips = []; isPlaying = false;
+  for (const url of objectUrls) URL.revokeObjectURL(url);
+  objectUrls = [];
+}
+
+function normalizeModel(root) {
+  const box = new THREE.Box3().setFromObject(root);
+  if (box.isEmpty()) return;
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+  root.position.sub(center);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fitScale = maxDim > 0 ? 2.6 / maxDim : 1;
+  root.scale.setScalar(fitScale);
+  baseScale = fitScale;
+  scaleInput.value = "1";
+  controls.target.set(0, 0, 0);
+  camera.position.set(0, 0.2, 4.2);
+  controls.update();
+}
+
+function loadFBX(fbxFile, allFiles) {
+  disposeModel();
+  const fileMap = new Map();
+  for (const file of allFiles) {
+    fileMap.set(file.name.toLowerCase(), file);
+    fileMap.set(file.webkitRelativePath?.toLowerCase() || file.name.toLowerCase(), file);
+  }
+  const manager = new THREE.LoadingManager();
+  manager.setURLModifier((url) => {
+    const clean = decodeURIComponent(url.split(/[?#]/)[0]).replaceAll("\\", "/");
+    const basename = clean.split("/").pop().toLowerCase();
+    const matched = fileMap.get(clean.toLowerCase()) || fileMap.get(basename);
+    if (matched && matched !== fbxFile) {
+      const blobUrl = URL.createObjectURL(matched);
+      objectUrls.push(blobUrl);
+      return blobUrl;
+    }
+    return url;
+  });
+  const loader = new FBXLoader(manager);
+  const reader = new FileReader();
+  reader.onerror = () => setStatus("讀取 FBX 失敗。");
+  reader.onload = () => {
+    try {
+      const root = loader.parse(reader.result, "");
+      model = root;
+      scene.add(model);
+      normalizeModel(model);
+      clips = root.animations || [];
+      mixer = clips.length ? new THREE.AnimationMixer(root) : null;
+      animationSelect.innerHTML = "";
+      if (clips.length) {
+        clips.forEach((clip, i) => {
+          const option = document.createElement("option");
+          option.value = String(i);
+          option.textContent = clip.name || `Animation ${i + 1}`;
+          animationSelect.appendChild(option);
+        });
+        animationSelect.disabled = false;
+        playButton.disabled = false;
+        stopButton.disabled = false;
+        timeInput.disabled = false;
+        selectAnimation(0);
+      } else {
+        animationSelect.add(new Option("此 FBX 沒有內嵌動畫", ""));
+        animationSelect.disabled = true;
+        playButton.disabled = true;
+        stopButton.disabled = true;
+        timeInput.disabled = true;
+      }
+      hint.style.display = "none";
+      const meshes = [];
+      let meshCount = 0, skinnedCount = 0;
+      root.traverse(obj => {
+        if (obj.isMesh || obj.isSkinnedMesh) {
+          meshCount++;
+          if (obj.isSkinnedMesh) skinnedCount++;
+          meshes.push(obj.name || obj.type);
+        }
+      });
+      setStatus(`載入成功：${fbxFile.name}\nMesh：${meshCount}（Skinned：${skinnedCount}）\n動畫：${clips.length}\n${clips.map(c => c.name || "(unnamed)").join(", ") || "無動畫"}`);
+    } catch (error) {
+      console.error(error);
+      setStatus("FBX 解析失敗：" + (error?.message || error));
+    }
+  };
+  reader.readAsArrayBuffer(fbxFile);
+}
+
+function selectAnimation(index) {
+  if (!mixer || !clips[index]) return;
+  if (activeAction) activeAction.stop();
+  activeAction = mixer.clipAction(clips[index]);
+  activeAction.reset().play();
+  activeAction.paused = true;
+  activeAction.time = 0;
+  isPlaying = false;
+  playButton.textContent = "播放";
+  timeInput.max = String(Math.max(clips[index].duration, 0.01));
+  timeInput.value = "0";
+  timeLabel.textContent = `0.00s / ${clips[index].duration.toFixed(2)}s`;
+}
+animationSelect.addEventListener("change", () => selectAnimation(Number(animationSelect.value)));
+playButton.addEventListener("click", () => {
+  if (!activeAction) return;
+  isPlaying = !isPlaying;
+  activeAction.paused = !isPlaying;
+  playButton.textContent = isPlaying ? "暫停" : "播放";
+});
+stopButton.addEventListener("click", () => {
+  if (!activeAction) return;
+  isPlaying = false;
+  activeAction.paused = true;
+  activeAction.time = 0;
+  mixer.update(0);
+  playButton.textContent = "播放";
+  timeInput.value = "0";
+});
+timeInput.addEventListener("input", () => {
+  if (!activeAction || !mixer) return;
+  activeAction.paused = true;
+  isPlaying = false;
+  activeAction.time = Number(timeInput.value);
+  mixer.update(0);
+  playButton.textContent = "播放";
+  timeLabel.textContent = `${Number(timeInput.value).toFixed(2)}s / ${activeAction.getClip().duration.toFixed(2)}s`;
+});
+scaleInput.addEventListener("input", () => {
+  if (model) model.scale.setScalar(baseScale * Number(scaleInput.value));
+});
+document.getElementById("reset").addEventListener("click", () => {
+  if (model) normalizeModel(model);
+});
+wireButton.addEventListener("click", () => {
+  wireframe = !wireframe;
+  if (model) model.traverse(obj => {
+    if (obj.material) for (const mat of (Array.isArray(obj.material) ? obj.material : [obj.material])) if ("wireframe" in mat) mat.wireframe = wireframe;
+  });
+  wireButton.textContent = "線框：" + (wireframe ? "開" : "關");
+});
+fileInput.addEventListener("change", () => {
+  const files = [...fileInput.files];
+  const fbx = files.find(file => file.name.toLowerCase().endsWith(".fbx"));
+  if (!fbx) { setStatus("請選擇一個 .fbx 檔案。"); return; }
+  loadFBX(fbx, files);
+});
+viewport.addEventListener("dragover", e => { e.preventDefault(); });
+viewport.addEventListener("drop", e => {
+  e.preventDefault();
+  const files = [...(e.dataTransfer?.files || [])];
+  const fbx = files.find(file => file.name.toLowerCase().endsWith(".fbx"));
+  if (fbx) loadFBX(fbx, files);
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = Math.min(clock.getDelta(), 0.05);
+  if (mixer && isPlaying) {
+    mixer.update(delta);
+    if (activeAction) {
+      const duration = activeAction.getClip().duration;
+      timeInput.value = String(Math.min(activeAction.time, duration));
+      timeLabel.textContent = `${activeAction.time.toFixed(2)}s / ${duration.toFixed(2)}s`;
+    }
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
