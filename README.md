@@ -16,7 +16,8 @@ A cross-platform 3D character and motion viewer/player for the **Project SEKAI**
 
 - **Engine:** Godot 4.x, GDScript.
 - **Rendering:** Compatibility renderer as the initial cross-platform baseline; validate visual quality and performance on target devices.
-- **Interchange:** glTF 2.0 / GLB plus project JSON metadata.
+- **Browser preview input:** FBX via Three.js FBXLoader; the first browser test supports exported FBX files.
+- **Godot runtime interchange:** glTF 2.0 / GLB plus project JSON metadata.
 - **Platforms:** Godot Web export and Android export from the same project.
 - **Source asset pipeline:** initially documented interfaces; Unity asset extraction and Project SEKAI-specific FBX reconstruction are later phases.
 
@@ -41,7 +42,7 @@ project-sekai-3d-mv-player/
 4. Press **F6/F5** to run the main scene.
 5. To test a model, enter a local `.glb` or `.gltf` path in the path field and select **Load**. The file must be accessible to the running Godot project.
 
-The first scaffold provides a basic 3D viewport, GLTF/GLB loader, and animation controls. Browser and Android file-picker UX will be implemented and tested separately; path-based loading is currently a developer workflow.
+The root `index.html` provides a browser-native FBX previewer with model orbit/zoom, animation selection, playback and a timeline. It uses Three.js FBXLoader and can accept external texture files selected alongside the FBX. The Godot project remains the planned shared Android/Web runtime and currently uses GLB/glTF as its interchange format.
 
 ## Current limitations
 
@@ -51,4 +52,4 @@ The first scaffold provides a basic 3D viewport, GLTF/GLB loader, and animation 
 - No stage, camera choreography, lighting timeline, or complete 3DMV scene format yet.
 - Loading a model is not the same as reproducing an original in-game MV.
 
-See [Architecture](docs/ARCHITECTURE.md) and [Roadmap](docs/ROADMAP.md).
+See [Browser FBX Player](docs/WEB_PLAYER.md), [Architecture](docs/ARCHITECTURE.md) and [Roadmap](docs/ROADMAP.md).
