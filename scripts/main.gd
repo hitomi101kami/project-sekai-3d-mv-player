@@ -5,7 +5,7 @@ const GltfSceneLoaderScript = preload("res://scripts/gltf_loader.gd")
 @onready var model_root: Node3D = $ModelRoot
 
 var _loader: GltfSceneLoader
-var _loaded_scene: Node3D
+var _loaded_scene: Node
 var _animation_player: AnimationPlayer
 var _status_label: Label
 var _path_input: LineEdit
@@ -118,7 +118,7 @@ func _load_model_from_path() -> void:
 		_loaded_scene.queue_free()
 		_loaded_scene = null
 
-	_loaded_scene = result["scene"] as Node3D
+	_loaded_scene = result["scene"] as Node
 	model_root.add_child(_loaded_scene)
 	_find_animation_player(_loaded_scene)
 	_populate_animation_list()
